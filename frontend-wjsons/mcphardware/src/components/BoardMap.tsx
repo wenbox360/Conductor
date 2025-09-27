@@ -54,7 +54,24 @@ export default function BoardMap({
   // Compute pin centers
   const pins = useMemo(() => {
     const out: { num: number; x: number; y: number }[] = [];
-    if (horizontal) {
+    
+    // Check for custom layout
+    if (board.customLayout) {
+      const { pinGroups } = board.customLayout;
+      
+      for (const group of pinGroups) {
+        const pinCount = group.endPin - group.startPin + 1;
+        const startX = group.x * W;
+        const y = group.y * H;
+        const width = group.width * W;
+        
+        for (let i = 0; i < pinCount; i++) {
+          const pinNum = group.startPin + i;
+          const x = startX + (i / (pinCount - 1)) * width;
+          out.push({ num: pinNum, x, y });
+        }
+      }
+    } else if (horizontal) {
       // Horizontal 2×N along X (Pi-5 photo)
       const topY = header.y + header.h * 0.35;
       const botY = header.y + header.h * 0.72;
@@ -78,7 +95,7 @@ export default function BoardMap({
       }
     }
     return out;
-  }, [horizontal, header.x, header.y, header.w, header.h, rows]);
+  }, [board.customLayout, horizontal, header.x, header.y, header.w, header.h, rows, W, H]);
 
   // Visual helpers
   const rad = Math.max(9, Math.min(16, (horizontal ? header.h : header.w) * 0.065));

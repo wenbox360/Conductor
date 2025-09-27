@@ -28,5 +28,25 @@
       18
     ],
     "label": "hjaksdjh"
+  },
+  {
+    "id": "41d51f60-279f-425f-a082-46c62b76f604",
+    "boardId": "leonardo",
+    "partId": "button",
+    "role": "Press",
+    "pins": [
+      27
+    ],
+    "label": null
+  },
+  {
+    "id": "c2ec746f-11ba-4cc9-9bb0-6df4176af6ff",
+    "boardId": "pi5",
+    "partId": "led",
+    "role": "Light",
+    "pins": [
+      40
+    ],
+    "label": "asd"
   }
 ]

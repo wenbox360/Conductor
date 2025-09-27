@@ -81,6 +81,14 @@ export default function HardwareMapper({
 
 async function saveAll(){
   setBusy(true); setMsg('');
+  
+  // Check if there are any mappings to save
+  if (mappings.length === 0) {
+    setMsg('No mappings to save. Add some hardware mappings first.');
+    setBusy(false);
+    return;
+  }
+  
   try {
     const reg = tools.find(t => /register[_-]?mapping/i.test(t.name));
     if (reg) {
@@ -218,7 +226,11 @@ async function saveAll(){
       {/* Save */}
       <div className="flex items-center gap-3 justify-end">
         {msg && <span className="text-xs opacity-80">{msg}</span>}
-        <button className="btn btn-primary" disabled={busy} onClick={saveAll}>
+        <button 
+          className="btn btn-primary" 
+          disabled={busy || mappings.length === 0} 
+          onClick={saveAll}
+        >
           {busy ? 'Saving…' : 'Save mappings'}
         </button>
       </div>
