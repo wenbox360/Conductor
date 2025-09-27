@@ -1,0 +1,3 @@
+[submodule "mhacks25_server.py"]
+	path = mhacks25_server.py
+	url = https://github.com/wenbox360/mhacks25_server.py.git
