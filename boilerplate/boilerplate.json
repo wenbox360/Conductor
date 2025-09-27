@@ -1,0 +1,24 @@
+{
+    "servo": {
+        "include": "#include <Servo.h>",
+        "function": ["void servo_write(int angle){Servo turretServo;turretServo.attach(8);turretServo.writeMicroseconds(angle);}"]
+    },
+    "ir": {
+        "include": "#include <Servo.h>",
+        "function": ["int irSensorReading(){return analogRead(IR_PIN);}"]
+    },
+    "buzzer": {
+        "include": "#include <Servo.h>",
+        "function": ["void buzz(int duration){tone(BUZZER_PIN, 1000);delay(duration);noTone(BUZZER_PIN);}",
+                     "void buzz_on(){tone(BUZZER_PIN, 1000);}",
+                     "void buzz_off(){noTone(BUZZER_PIN);}"
+                    ]
+    },
+    "led": {
+        "include": "#include <Servo.h>",
+        "function": ["void led_on(){digitalWrite(LED_PIN, HIGH);}",
+                     "void led_off(){digitalWrite(LED_PIN, LOW);}"
+                    ]
+    }
+
+}

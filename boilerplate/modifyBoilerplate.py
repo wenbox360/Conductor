@@ -6,7 +6,7 @@ def import_pins(input_json):
     pin_list = []
     for sensorMap in input_json['mappings']:
         pin_str = "#define "
-        pin_str += sensorMap['partId'].upper() +"_" + sensorMap['id'] + "_PIN "
+        pin_str += sensorMap['partId'].upper() + "_PIN "
         pin_str += str(sensorMap['pins'][0]) + " "
         pin_list.append(pin_str)
     return pin_list
@@ -20,7 +20,8 @@ def import_includes(input_json, function_map):
 def import_sensor_functions(input_json, function_map):
     function_list = []
     for sensorMap in input_json['mappings']:
-        function_list.append(function_map[sensorMap['partId']]["function"])
+        for pin in function_map[sensorMap['partId']]["function"]:
+            function_list.append(pin)
     return function_list
 
 def make_unique(input_json, functions_json):
@@ -47,4 +48,4 @@ def make_unique(input_json, functions_json):
 
 
 if __name__ == "__main__":
-    make_unique("boilerplate/pinMap.json", "boilerplate/sensorFunctions.json") # Example usage - probably need to modify pinMap.json
+    make_unique("boilerplate/pinMap.json", "boilerplate/boilerplate.json") # Example usage - probably need to modify pinMap.json

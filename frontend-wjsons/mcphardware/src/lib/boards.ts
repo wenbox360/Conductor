@@ -15,6 +15,17 @@ export type BoardDef = {
   gnd?: number[];
   v33?: number[];
   v5?: number[];
+  // Custom layout for non-standard boards
+  customLayout?: {
+    type: 'arduino' | 'custom';
+    pinGroups: Array<{
+      startPin: number;
+      endPin: number;
+      x: number;        // 0-1 relative to image
+      y: number;        // 0-1 relative to image
+      width: number;    // 0-1 relative to image
+    }>;
+  };
 };
 
 export type PartDef = {
@@ -68,7 +79,46 @@ export const PI5: BoardDef = {
 };
 
 
-export const BOARDS: BoardDef[] = [PI5];
+// --- Arduino Leonardo R3 (31-pin) ------------------------
+export const ARDUINO_LEONARDO: BoardDef = {
+  id: 'leonardo',
+  name: 'Arduino Leonardo R3',
+  image: '/boards/leonardo.png',
+  // Standard header for fallback
+  header: { x: 0.15, y: 0.25, w: 0.7, h: 0.5 },
+  rows: 31, // 31 pins total (18 top + 13 bottom right)
+  v5: [22], // 5V pin (bottom right)
+  v33: [21], // 3.3V pin (bottom right)
+  gnd: [4, 23, 24], // GND pins (top and bottom right)
+  oddLabels: {
+    1: 'SCL', 3: 'AREF', 5: '~13', 7: '~11', 9: '~9', 11: '7', 13: '~5', 15: '~3', 17: 'TX1', 19: 'IOREF', 21: '3.3V', 23: 'GND', 25: 'Vin', 27: 'A1', 29: 'A3', 31: 'A5'
+  },
+  evenLabels: {
+    2: 'SDA', 4: 'GND', 6: '12', 8: '~10', 10: '8', 12: '~6', 14: '4', 16: '2', 18: 'RX0', 20: 'RESET', 22: '5V', 24: 'GND', 26: 'A0', 28: 'A2', 30: 'A4'
+  },
+  // Custom Arduino layout
+  customLayout: {
+    type: 'arduino',
+    pinGroups: [
+      {
+        startPin: 1,
+        endPin: 18,
+        x: 0.08,   // Top row position
+        y: 0.18,   // Top row Y
+        width: 0.84 // Top row width
+      },
+      {
+        startPin: 19,
+        endPin: 31,
+        x: 0.35,   // Bottom row position (moved more to the right)
+        y: 0.80,   // Bottom row Y (around 80% down from top)
+        width: 0.48 // Bottom row width (spans about 48% of board width)
+      }
+    ]
+  }
+};
+
+export const BOARDS: BoardDef[] = [PI5, ARDUINO_LEONARDO];
 
 // mcphardware/src/lib/boards.ts
 export const PARTS: PartDef[] = [
@@ -78,5 +128,8 @@ export const PARTS: PartDef[] = [
   { id: 'buzzer', name: 'Buzzer',                roles: ['Buzz'],                  minPins: 1, maxPins: 1 },
   { id: 'dht22',  name: 'DHT22 (Temp/Humidity)', roles: ['Temperature','Humidity'],minPins: 1, maxPins: 1 },
   { id: 'hcsr04', name: 'HC-SR04 (Ultrasonic)',  roles: ['Trigger','Echo'],       minPins: 2, maxPins: 2 },
+  { id: 'servo',  name: 'Servo Motor',           roles: ['Control'],               minPins: 1, maxPins: 1 },
+  { id: 'analog_sensor', name: 'Analog Sensor',  roles: ['Read'],                  minPins: 1, maxPins: 1 },
+  { id: 'digital_sensor', name: 'Digital Sensor', roles: ['Read'],                 minPins: 1, maxPins: 1 },
   { id: 'custom', name: 'Custom (multi-pin)',    roles: ['Generic'],              minPins: 1, maxPins: 6 },
 ];
