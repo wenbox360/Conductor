@@ -11,10 +11,16 @@ def import_pins(input_json):
         pin_list.append(pin_str)
     return pin_list
 
+def import_includes(input_json, function_map):
+    include_list = []
+    for sensorMap in input_json['mappings']:
+        include_list.append(function_map[sensorMap['partId']]["include"])
+    return include_list
+
 def import_sensor_functions(input_json, function_map):
     function_list = []
     for sensorMap in input_json['mappings']:
-        function_list.append(function_map[sensorMap['partId']])
+        function_list.append(function_map[sensorMap['partId']]["function"])
     return function_list
 
 def make_unique(input_json, functions_json):
@@ -26,8 +32,12 @@ def make_unique(input_json, functions_json):
     pin_maps = json.loads(input)
     pin_list = import_pins(pin_maps)
     function_list = import_sensor_functions(pin_maps, function_map)
-    
+    include_list = import_includes(pin_maps, function_map)
+
     with open("boilerplate/unique.c", "w") as f:
+        f.write("// Include Libraries\n")
+        for include in include_list:
+            f.write(include + "\n")
         f.write("// Pin Definitions\n")
         for pin in pin_list:
             f.write(pin + "\n")
