@@ -1,79 +1,103 @@
 #include <Servo.h>
 
+#define IR_PIN      A0
+#define BUZZER_PIN  6
+#define SERVO_PIN   8
+#define LED_PIN     7
+
 Servo turretServo;
+
+char inputBuffer[32];     // buffer for incoming serial data
+byte bufferIndex = 0;
+
+unsigned long lastIrSend = 0;    // timer for IR reporting
+const unsigned long irInterval = 200; // send IR data every 200ms
 
 void setup() {
   Serial.begin(9600);
-#ifdef SERVO_PIN
-    turretServo.attach(SERVO_PIN);
-#endif
+  pinMode(LED_PIN, OUTPUT);
+  pinMode(BUZZER_PIN, OUTPUT);
+  turretServo.attach(SERVO_PIN);
 }
 
-void servo_write(int angle){
-    turretServo.writeMicroseconds(angle);
+void servo_write(int angle) {
+  turretServo.write(angle);
 }
 
-int irSensorReading(){
-    return analogRead(IR_PIN);
+int irSensorReading() {
+  return analogRead(IR_PIN);
 }
 
-void buzzer_duration(int duration){
-    tone(BUZZER_PIN, 1000);
-    delay(duration);
-    noTone(BUZZER_PIN);
+void buzzer_duration(int duration) {
+  tone(BUZZER_PIN, 1000);
+  delay(duration);
+  noTone(BUZZER_PIN);
 }
 
-void buzzer_on(){
-    tone(BUZZER_PIN, 1000);
+void led_on() {
+  digitalWrite(LED_PIN, HIGH);
 }
 
-void buzzer_off(){
-    noTone(BUZZER_PIN);
+void led_off() {
+  digitalWrite(LED_PIN, LOW);
 }
 
-void led_on(){
-    digitalWrite(LED_PIN, HIGH);
-}
+void processCommand(char *cmd) {
+  // Find comma if present
+  char *comma = strchr(cmd, ',');
+  int command = 0;
+  int param   = 0;
 
-void led_off(){
-    digitalWrite(LED_PIN, LOW);
+  if (comma) {
+    *comma = '\0'; // split string into two parts
+    command = atoi(cmd);
+    param   = atoi(comma + 1);
+  } else {
+    command = atoi(cmd);
+  }
+
+  // ---- Command handling ----
+  if (command == 2) {           // Piezo test (no param)
+    buzzer_duration(200);
+    Serial.println("A");
+  }
+  else if (command == 20) {     // Servo write (needs param)
+    servo_write(param);
+    Serial.println("A");
+  }
+  else if (command == 30) {     // LED write (needs param)
+    if (param == 1) led_on();
+    else led_off();
+    Serial.println("A");
+  }
+  else {
+    Serial.println("E");        // Unknown command
+  }
 }
 
 void loop() {
+  // Handle incoming serial commands
+  while (Serial.available() > 0) {
+    char inChar = (char)Serial.read();
 
-//main loop code here
-
-//read serial input
-if (Serial.available() > 0) {
-    int command = Serial.parseInt();
-    int param = Serial.parseInt();
-}
-
-if(command == 2) { //Piezo command
-    buzzer_duration(param);
-    Serial.print("A");
-    command = 0; //reset command
-}
-else if (command == 20) { //SERVO command
-    servo_write(param);
-    Serial.print("A");
-    command = 0; //reset command
-}
-else if (command == 30) { //LED command
-    if(param == 1) {
-        led_on();
-    } else {
-        led_off();
+    if (inChar == ';') { // end of command
+      inputBuffer[bufferIndex] = '\0';  // null terminate
+      processCommand(inputBuffer);
+      bufferIndex = 0;
     }
-    Serial.print("A");
-    command = 0; //reset command
-}
- 
-//IR Sensor command
-int irValue = irSensorReading();
-Serial.print(40);
-Serial.print(irValue);
-Serial.print("\x00");
+    else {
+      if (bufferIndex < sizeof(inputBuffer) - 1) {
+        inputBuffer[bufferIndex++] = inChar;
+      }
+    }
+  }
 
-//end of main loop
+  // ---- Always stream IR values ----
+  unsigned long now = millis();
+  if (now - lastIrSend >= irInterval) {
+    lastIrSend = now;
+    int irValue = irSensorReading();
+    Serial.print("40,");
+    Serial.println(irValue);
+  }
 }
