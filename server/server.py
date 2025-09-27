@@ -4,10 +4,6 @@ from fastmcp import FastMCP
 from resources import register_resources
 from sendQueue import start_queue_processor
 
-# --- Configuration ---
-HOST = "127.0.0.1"  # Localhost
-PORT = 8080         # Standard port for local development
-
 def setup_server() -> FastMCP:
     """Initializes and configures the MCP server instance."""
     print("Setting up MCP server...")
