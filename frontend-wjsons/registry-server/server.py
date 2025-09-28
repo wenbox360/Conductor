@@ -21,8 +21,10 @@ load_dotenv(".env.local")  # keep your current env layout
 
 ANTHROPIC_API_KEY = os.getenv("ANTHROPIC_API_KEY")
 CLAUDE_MODEL = os.getenv("CLAUDE_MODEL", "claude-3-5-haiku-20241022")
-# Path or command your FastMCP Client connects to (your MCP server)
-MCP_SERVER = os.getenv("MCP_SERVER", "server.py")
+# Path to the MCP server script in the mhacks25_server directory
+MCP_SERVER = os.getenv("MCP_SERVER", "../../../mhacks25_server/server.py")
+# Bearer token for your FastMCP deployment (if using cloud)
+FASTMCP_BEARER_TOKEN = os.getenv("FASTMCP_BEARER_TOKEN")
 
 if not ANTHROPIC_API_KEY:
     raise RuntimeError("ANTHROPIC_API_KEY missing from .env.local")
@@ -81,39 +83,63 @@ def save_all(items: List[dict]) -> None:
 # Helper: format MCP tools for Claude
 # -------------------------------------------------------------------
 def format_tools_for_claude(mcp_tools: List[Any]) -> List[Dict[str, Any]]:
+    """
+    Convert FastMCP Tool objects to Claude-compatible format.
+    FastMCP tools have a more standardized structure.
+    """
     tools_out: List[Dict[str, Any]] = []
     for tool in mcp_tools:
-        name = getattr(tool, "name", None) or getattr(tool, "id", None) or "unnamed_tool"
-        description = getattr(tool, "description", None) or getattr(tool, "title", None) or ""
-
-        input_schema = (
-            getattr(tool, "input_schema", None)
-            or getattr(tool, "inputSchema", None)
-            or getattr(tool, "schema", None)
-            or getattr(tool, "inputSchemaJson", None)
-            or {}
-        )
-
-        properties: Dict[str, Any] = {}
+        # FastMCP tools should have standard attributes
+        name = getattr(tool, "name", "unnamed_tool")
+        description = getattr(tool, "description", "")
+        
+        # FastMCP tools have input_schema as a standard attribute
+        input_schema = getattr(tool, "input_schema", {})
+        
+        # If input_schema is properly formatted, use it directly
         if isinstance(input_schema, dict) and "properties" in input_schema:
-            properties = input_schema.get("properties", {}) or {}
+            schema = input_schema
         else:
-            params = getattr(tool, "parameters", None) or getattr(tool, "params", None) or {}
-            if isinstance(params, dict):
-                for pname, pinfo in params.items():
-                    ptype = "string"
-                    if isinstance(pinfo, dict):
-                        pt = pinfo.get("type")
-                        if pt in ("int", "integer"):
-                            ptype = "integer"
-                        elif pt in ("float", "number"):
-                            ptype = "number"
-                    properties[pname] = {"type": ptype, "description": f"Parameter: {pname}"}
+            # Fallback: create basic schema structure
+            schema = {
+                "type": "object",
+                "properties": {},
+                "required": []
+            }
+            
+            # Try to extract parameters if available
+            if hasattr(tool, "parameters"):
+                params = getattr(tool, "parameters", {})
+                if isinstance(params, dict):
+                    for pname, pinfo in params.items():
+                        ptype = "string"
+                        pdesc = f"Parameter: {pname}"
+                        
+                        if isinstance(pinfo, dict):
+                            ptype = pinfo.get("type", "string")
+                            pdesc = pinfo.get("description", pdesc)
+                            
+                            # Normalize type names
+                            if ptype in ("int", "integer"):
+                                ptype = "integer"
+                            elif ptype in ("float", "number"):
+                                ptype = "number"
+                            elif ptype == "bool":
+                                ptype = "boolean"
+                                
+                        schema["properties"][pname] = {
+                            "type": ptype,
+                            "description": pdesc
+                        }
+                        
+                        # Add to required if specified
+                        if isinstance(pinfo, dict) and pinfo.get("required", False):
+                            schema["required"].append(pname)
 
         tools_out.append({
             "name": name,
             "description": description,
-            "input_schema": {"type": "object", "properties": properties, "required": list(properties.keys())}
+            "input_schema": schema
         })
     return tools_out
 
@@ -154,7 +180,16 @@ def serialize_tool_result_for_claude(result) -> Dict[str, Any]:
 # Core: run one agent turn (ask Claude, run tools if requested, finalize)
 # -------------------------------------------------------------------
 async def run_agent_once(user_text: str) -> str:
-    async with Client(MCP_SERVER) as mcp:
+    # Configure FastMCP client
+    # For local server.py files, we don't need bearer tokens
+    client_kwargs = {}
+    
+    # Only add bearer token for cloud deployments (https URLs)
+    if FASTMCP_BEARER_TOKEN and MCP_SERVER.startswith("https://"):
+        client_kwargs["headers"] = {"Authorization": f"Bearer {FASTMCP_BEARER_TOKEN}"}
+    
+    # Connect to the MCP server
+    async with Client(MCP_SERVER, **client_kwargs) as mcp:
         # ensure server is reachable and enumerate tools
         await mcp.ping()
         tools = await mcp.list_tools()
@@ -251,12 +286,22 @@ def delete_mapping(mapping_id: str):
 async def agent_health():
     # Basic checks: API key present and MCP server pings
     try:
-        async with Client(MCP_SERVER) as mcp:
+        # Configure client with Bearer token if available
+        client_kwargs = {}
+        if FASTMCP_BEARER_TOKEN and MCP_SERVER.startswith("https://"):
+            client_kwargs["headers"] = {"Authorization": f"Bearer {FASTMCP_BEARER_TOKEN}"}
+        
+        async with Client(MCP_SERVER, **client_kwargs) as mcp:
             await mcp.ping()
             tools = await mcp.list_tools()
-        return {"ok": True, "model": CLAUDE_MODEL, "tools": [t.name for t in tools]}
+        return {
+            "ok": True, 
+            "model": CLAUDE_MODEL, 
+            "mcp_server": MCP_SERVER,
+            "tools": [getattr(t, "name", str(t)) for t in tools]
+        }
     except Exception as e:
-        return {"ok": False, "error": str(e)}
+        return {"ok": False, "error": str(e), "mcp_server": MCP_SERVER}
 
 @app.post("/agent/chat")
 async def agent_chat(body: ChatIn):
@@ -271,3 +316,10 @@ async def agent_chat(body: ChatIn):
     except Exception as e:
         # Generic error
         raise HTTPException(status_code=500, detail=str(e))
+
+# -------------------------------------------------------------------
+# Startup
+# -------------------------------------------------------------------
+if __name__ == "__main__":
+    import uvicorn
+    uvicorn.run(app, host="0.0.0.0", port=5057)
