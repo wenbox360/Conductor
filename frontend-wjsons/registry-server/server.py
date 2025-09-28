@@ -1,13 +1,35 @@
-# registry-server/server.py
 from __future__ import annotations
+
+import os
+import json
+import base64
+from pathlib import Path
+from typing import Dict, Any, List, Optional
+
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel, Field
-from typing import List, Optional
-from pathlib import Path
-import json
+from dotenv import load_dotenv
 
-app = FastAPI(title="Mapping Registry", version="1.0.0")
+from fastmcp import Client
+import anthropic
+
+# -------------------------------------------------------------------
+# Env / Globals
+# -------------------------------------------------------------------
+load_dotenv(".env.local")  # keep your current env layout
+
+ANTHROPIC_API_KEY = os.getenv("ANTHROPIC_API_KEY")
+CLAUDE_MODEL = os.getenv("CLAUDE_MODEL", "claude-3-5-haiku-20241022")
+# Path or command your FastMCP Client connects to (your MCP server)
+MCP_SERVER = os.getenv("MCP_SERVER", "server.py")
+
+if not ANTHROPIC_API_KEY:
+    raise RuntimeError("ANTHROPIC_API_KEY missing from .env.local")
+
+anth = anthropic.Anthropic(api_key=ANTHROPIC_API_KEY)
+
+app = FastAPI(title="Mapping Registry + Agent", version="1.1.0")
 
 # Allow your Next.js site to call this in dev
 app.add_middleware(
@@ -18,7 +40,9 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# --- Models -------------------------------------------------
+# -------------------------------------------------------------------
+# Models (existing)
+# -------------------------------------------------------------------
 class Mapping(BaseModel):
     id: str
     boardId: str
@@ -30,7 +54,16 @@ class Mapping(BaseModel):
 class MappingBatch(BaseModel):
     mappings: List[Mapping] = Field(default_factory=list)
 
-# --- Storage ------------------------------------------------
+# -------------------------------------------------------------------
+# Models (agent)
+# -------------------------------------------------------------------
+class ChatIn(BaseModel):
+    text: str
+    session_id: Optional[str] = "default"
+
+# -------------------------------------------------------------------
+# Storage (existing)
+# -------------------------------------------------------------------
 DATA_FILE = Path(__file__).with_name("mappings.json")
 
 def load_all() -> List[dict]:
@@ -44,7 +77,140 @@ def load_all() -> List[dict]:
 def save_all(items: List[dict]) -> None:
     DATA_FILE.write_text(json.dumps(items, indent=2))
 
-# --- Routes -------------------------------------------------
+# -------------------------------------------------------------------
+# Helper: format MCP tools for Claude
+# -------------------------------------------------------------------
+def format_tools_for_claude(mcp_tools: List[Any]) -> List[Dict[str, Any]]:
+    tools_out: List[Dict[str, Any]] = []
+    for tool in mcp_tools:
+        name = getattr(tool, "name", None) or getattr(tool, "id", None) or "unnamed_tool"
+        description = getattr(tool, "description", None) or getattr(tool, "title", None) or ""
+
+        input_schema = (
+            getattr(tool, "input_schema", None)
+            or getattr(tool, "inputSchema", None)
+            or getattr(tool, "schema", None)
+            or getattr(tool, "inputSchemaJson", None)
+            or {}
+        )
+
+        properties: Dict[str, Any] = {}
+        if isinstance(input_schema, dict) and "properties" in input_schema:
+            properties = input_schema.get("properties", {}) or {}
+        else:
+            params = getattr(tool, "parameters", None) or getattr(tool, "params", None) or {}
+            if isinstance(params, dict):
+                for pname, pinfo in params.items():
+                    ptype = "string"
+                    if isinstance(pinfo, dict):
+                        pt = pinfo.get("type")
+                        if pt in ("int", "integer"):
+                            ptype = "integer"
+                        elif pt in ("float", "number"):
+                            ptype = "number"
+                    properties[pname] = {"type": ptype, "description": f"Parameter: {pname}"}
+
+        tools_out.append({
+            "name": name,
+            "description": description,
+            "input_schema": {"type": "object", "properties": properties, "required": list(properties.keys())}
+        })
+    return tools_out
+
+# -------------------------------------------------------------------
+# Helper: convert MCP tool result for Claude tool_result
+# -------------------------------------------------------------------
+def serialize_tool_result_for_claude(result) -> Dict[str, Any]:
+    blocks: List[Dict[str, Any]] = []
+
+    if hasattr(result, "content") and result.content:
+        for b in result.content:
+            t = getattr(b, "type", None)
+            if t == "text" and hasattr(b, "text"):
+                blocks.append({"type": "text", "text": b.text})
+            elif t == "image" and hasattr(b, "data"):
+                data = b.data
+                if isinstance(data, (bytes, bytearray)):
+                    data = base64.b64encode(data).decode("utf-8")
+                blocks.append({
+                    "type": "input_image",
+                    "image_data": data,
+                    "mime_type": getattr(b, "mimeType", None) or getattr(b, "mime_type", None) or "image/png"
+                })
+            else:
+                # best-effort fallback
+                try:
+                    blocks.append({"type": "text", "text": json.dumps(getattr(b, "__dict__", str(b)))})
+                except Exception:
+                    blocks.append({"type": "text", "text": str(b)})
+    else:
+        blocks.append({"type": "text", "text": "Tool returned no content."})
+
+    ok = not getattr(result, "is_error", False)
+    status = {"type": "text", "text": f"[tool {'ok' if ok else 'error'}]"}
+    return {"content": [status] + blocks}
+
+# -------------------------------------------------------------------
+# Core: run one agent turn (ask Claude, run tools if requested, finalize)
+# -------------------------------------------------------------------
+async def run_agent_once(user_text: str) -> str:
+    async with Client(MCP_SERVER) as mcp:
+        # ensure server is reachable and enumerate tools
+        await mcp.ping()
+        tools = await mcp.list_tools()
+        claude_tools = format_tools_for_claude(tools)
+
+        # 1) Ask Claude what to do
+        msg = anth.messages.create(
+            model=CLAUDE_MODEL,
+            max_tokens=1024,
+            messages=[{"role": "user", "content": user_text}],
+            tools=claude_tools,
+            tool_choice={"type": "auto"},
+        )
+
+        # 2) If Claude decides to call tools, execute, then send back results
+        if msg.stop_reason == "tool_use":
+            tool_uses = [c for c in msg.content if getattr(c, "type", None) == "tool_use"]
+            tool_results_content: List[Dict[str, Any]] = []
+
+            for tu in tool_uses:
+                try:
+                    result = await mcp.call_tool(tu.name, tu.input)
+                    tr = serialize_tool_result_for_claude(result)
+                    tool_results_content.append({
+                        "type": "tool_result",
+                        "tool_use_id": tu.id,
+                        "content": tr["content"],
+                    })
+                except Exception as e:
+                    tool_results_content.append({
+                        "type": "tool_result",
+                        "tool_use_id": tu.id,
+                        "content": [{"type": "text", "text": f"[tool error] {e}"}],
+                        "is_error": True,
+                    })
+
+            # 3) Final natural-language answer
+            final = anth.messages.create(
+                model=CLAUDE_MODEL,
+                max_tokens=1024,
+                messages=[
+                    {"role": "user", "content": user_text},
+                    {"role": "assistant", "content": msg.content},          # includes tool_use blocks
+                    {"role": "user", "content": tool_results_content},      # tool_result blocks
+                ],
+            )
+            parts = [c.text for c in final.content if getattr(c, "type", None) == "text"]
+            return ("".join(parts)).strip() or "(no reply)"
+        else:
+            # No tool call; just return text
+            parts = [c.text for c in msg.content if getattr(c, "type", None) == "text"]
+            return ("".join(parts)).strip() or "(no reply)"
+
+# -------------------------------------------------------------------
+# Routes (existing)
+# -------------------------------------------------------------------
 @app.get("/health")
 def health():
     return {"ok": True}
@@ -77,3 +243,31 @@ def delete_mapping(mapping_id: str):
         raise HTTPException(404, "Mapping not found")
     save_all(new)
     return {"ok": True}
+
+# -------------------------------------------------------------------
+# New Routes (agent)
+# -------------------------------------------------------------------
+@app.get("/agent/health")
+async def agent_health():
+    # Basic checks: API key present and MCP server pings
+    try:
+        async with Client(MCP_SERVER) as mcp:
+            await mcp.ping()
+            tools = await mcp.list_tools()
+        return {"ok": True, "model": CLAUDE_MODEL, "tools": [t.name for t in tools]}
+    except Exception as e:
+        return {"ok": False, "error": str(e)}
+
+@app.post("/agent/chat")
+async def agent_chat(body: ChatIn):
+    if not body.text.strip():
+        raise HTTPException(400, "text is required")
+    try:
+        reply = await run_agent_once(body.text)
+        return {"reply": reply}
+    except anthropic.APIStatusError as e:
+        # Anthropic-specific error path
+        raise HTTPException(status_code=e.status_code or 500, detail=str(e))
+    except Exception as e:
+        # Generic error
+        raise HTTPException(status_code=500, detail=str(e))
