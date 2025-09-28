@@ -56,6 +56,10 @@ class Mapping(BaseModel):
 class MappingBatch(BaseModel):
     mappings: List[Mapping] = Field(default_factory=list)
 
+class CodeGenerationRequest(BaseModel):
+    mappings: List[Mapping] = Field(default_factory=list)
+    boardId: str
+
 # -------------------------------------------------------------------
 # Models (agent)
 # -------------------------------------------------------------------
@@ -78,6 +82,142 @@ def load_all() -> List[dict]:
 
 def save_all(items: List[dict]) -> None:
     DATA_FILE.write_text(json.dumps(items, indent=2))
+
+# -------------------------------------------------------------------
+# Boilerplate Code Generation
+# -------------------------------------------------------------------
+def generate_pin_definitions(mappings: List[Mapping]) -> List[str]:
+    """Generate #define statements for pins from mappings"""
+    pin_list = []
+    for mapping in mappings:
+        if mapping.pins:  # Only if pins are defined
+            pin_str = f"#define {mapping.partId.upper()}_PIN {mapping.pins[0]}"
+            pin_list.append(pin_str)
+    return pin_list
+
+def get_boilerplate_code() -> str:
+    """Load the boilerplate C code template"""
+    boilerplate_path = Path(__file__).parent.parent.parent / "boilerplate" / "boilerplate.c"
+    if boilerplate_path.exists():
+        return boilerplate_path.read_text()
+    else:
+        # Fallback boilerplate if file doesn't exist
+        return '''#include <Servo.h>
+
+Servo turretServo;
+
+char inputBuffer[32];     // buffer for incoming serial data
+byte bufferIndex = 0;
+
+unsigned long lastIrSend = 0;    // timer for IR reporting
+const unsigned long irInterval = 200; // send IR data every 200ms
+
+void setup() {
+  Serial.begin(9600);
+  pinMode(LED_PIN, OUTPUT);
+  pinMode(BUZZER_PIN, OUTPUT);
+  turretServo.attach(SERVO_PIN);
+}
+
+void servo_write(int angle) {
+  turretServo.write(angle);
+}
+
+int irSensorReading() {
+  return analogRead(IR_PIN);
+}
+
+void buzzer_duration(int duration) {
+  tone(BUZZER_PIN, 1000);
+  delay(duration);
+  noTone(BUZZER_PIN);
+}
+
+void led_on() {
+  digitalWrite(LED_PIN, HIGH);
+}
+
+void led_off() {
+  digitalWrite(LED_PIN, LOW);
+}
+
+void processCommand(char *cmd) {
+  // Find comma if present
+  char *comma = strchr(cmd, ',');
+  int command = 0;
+  int param   = 0;
+
+  if (comma) {
+    *comma = '\\0'; // split string into two parts
+    command = atoi(cmd);
+    param   = atoi(comma + 1);
+  } else {
+    command = atoi(cmd);
+  }
+
+  // ---- Command handling ----
+  if (command == 2) {           // Piezo test (no param)
+    buzzer_duration(200);
+    Serial.println("A");
+  }
+  else if (command == 20) {     // Servo write (needs param)
+    servo_write(param);
+    Serial.println("A");
+  }
+  else if (command == 30) {     // LED write (needs param)
+    if (param == 1) led_on();
+    else led_off();
+    Serial.println("A");
+  }
+  else {
+    Serial.println("E");        // Unknown command
+  }
+}
+
+void loop() {
+  // Handle incoming serial commands
+  while (Serial.available() > 0) {
+    char inChar = (char)Serial.read();
+
+    if (inChar == ';') { // end of command
+      inputBuffer[bufferIndex] = '\\0';  // null terminate
+      processCommand(inputBuffer);
+      bufferIndex = 0;
+    }
+    else {
+      if (bufferIndex < sizeof(inputBuffer) - 1) {
+        inputBuffer[bufferIndex++] = inChar;
+      }
+    }
+  }
+
+  // ---- Always stream IR values ----
+  unsigned long now = millis();
+  if (now - lastIrSend >= irInterval) {
+    lastIrSend = now;
+    int irValue = irSensorReading();
+    Serial.print("40,");
+    Serial.println(irValue);
+  }
+}'''
+
+def generate_arduino_code(mappings: List[Mapping], board_id: str) -> str:
+    """Generate complete Arduino code with pin definitions and boilerplate"""
+    pin_definitions = generate_pin_definitions(mappings)
+    boilerplate = get_boilerplate_code()
+    
+    # Combine pin definitions with boilerplate
+    code_lines = [
+        f"// Generated Arduino code for {board_id}",
+        "// Pin Definitions",
+    ]
+    
+    for pin_def in pin_definitions:
+        code_lines.append(pin_def)
+    
+    code_lines.extend(["", boilerplate])
+    
+    return "\n".join(code_lines)
 
 # -------------------------------------------------------------------
 # Helper: format MCP tools for Claude
@@ -278,6 +418,23 @@ def delete_mapping(mapping_id: str):
         raise HTTPException(404, "Mapping not found")
     save_all(new)
     return {"ok": True}
+
+@app.post("/generate-code")
+def generate_code(request: CodeGenerationRequest):
+    """Generate Arduino code from mappings"""
+    if not request.mappings:
+        raise HTTPException(400, "No mappings provided")
+    
+    try:
+        code = generate_arduino_code(request.mappings, request.boardId)
+        return {
+            "ok": True,
+            "code": code,
+            "boardId": request.boardId,
+            "mappingCount": len(request.mappings)
+        }
+    except Exception as e:
+        raise HTTPException(500, f"Code generation failed: {str(e)}")
 
 # -------------------------------------------------------------------
 # New Routes (agent)
