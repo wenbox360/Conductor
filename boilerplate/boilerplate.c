@@ -20,7 +20,15 @@ void servo_write(int angle) {
 }
 
 int irSensorReading() {
-  return analogRead(IR-GP2Y0A21YK0F_PIN);
+  int raw = analogRead(IR_GP2Y0A21YK0F_PIN);
+  float voltage = raw * (5.0 / 1023.0);  // convert ADC to voltage (assuming 5V ref)
+
+  if (voltage <= 0.42) {
+    return -1; // out of range / invalid
+  }
+
+  float distance_cm = 27.86 / (voltage - 0.42);
+  return (int)distance_cm;
 }
 
 void buzzer_duration(int duration) {
@@ -93,6 +101,7 @@ void loop() {
     lastIrSend = now;
     int irValue = irSensorReading();
     Serial.print("40,");
-    Serial.println(irValue);
+    Serial.print(irValue);
+    Serial.print(";");
   }
 }
