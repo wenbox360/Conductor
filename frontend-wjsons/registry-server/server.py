@@ -505,7 +505,25 @@ def get_mappings():
     return {"mappings": load_all()}
 
 @app.post("/mappings", status_code=201)
+def replace_mappings(batch: MappingBatch):
+    """Replace all mappings with the provided batch (complete replacement)."""
+    # Convert all mappings to dict format
+    new_mappings = [m.model_dump() for m in batch.mappings]
+    save_all(new_mappings)
+    
+    # Notify MCP server to reload tools
+    try:
+        # This could be expanded to actually call the MCP server to reload
+        print(f"Mappings updated. New count: {len(new_mappings)}")
+        # TODO: Add actual MCP server notification here
+    except Exception as e:
+        print(f"Error notifying MCP server: {e}")
+    
+    return {"ok": True, "count": len(batch.mappings)}
+
+@app.patch("/mappings", status_code=200)
 def add_mappings(batch: MappingBatch):
+    """Add/merge mappings with existing ones (merge operation)."""
     if not batch.mappings:
         raise HTTPException(400, "No mappings provided")
     current = load_all()
