@@ -5,7 +5,7 @@ import BoardMap from './BoardMap';
 import { BOARDS, PARTS, type BoardDef, type PartDef } from '@/lib/boards';
 import type { Tool } from '@/lib/api';
 import { jsonFetch } from '@/lib/api';
-import { Plug, Plus, Save } from 'lucide-react';
+import { Plug, Plus, Save, Download } from 'lucide-react';
 import type { Mapping } from '@/types/mapping';
 
 export default function HardwareMapper({
@@ -117,6 +117,55 @@ async function saveAll(){
   }
 }
 
+async function generateCode() {
+  if (!mappings.length) {
+    setMsg('No mappings to generate code for. Add some hardware mappings first.');
+    return;
+  }
+  
+  setBusy(true);
+  setMsg('Generating code...');
+  
+  try {
+    const resp = await fetch('/api/generate-code', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ 
+        mappings, 
+        boardId 
+      }),
+    });
+    
+    if (!resp.ok) {
+      const err = await resp.text().catch(() => '');
+      throw new Error(`Code generation failed (${resp.status}) ${err}`);
+    }
+    
+    const data = await resp.json();
+    
+    if (data.code) {
+      // Create a downloadable file
+      const blob = new Blob([data.code], { type: 'text/plain' });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `${boardId}_generated_code.ino`;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      URL.revokeObjectURL(url);
+      
+      setMsg(`Arduino code generated and downloaded! (${data.mappingCount} mappings)`);
+    } else {
+      throw new Error('No code returned from server');
+    }
+  } catch (e: any) {
+    setMsg(`Code generation failed: ${e.message}`);
+  } finally {
+    setBusy(false);
+  }
+}
+
 
   return (
     <div className="card shine space-y-4">
@@ -223,9 +272,17 @@ async function saveAll(){
         )}
       </div>
 
-      {/* Save */}
+      {/* Save & Generate */}
       <div className="flex items-center gap-3 justify-end">
         {msg && <span className="text-xs opacity-80">{msg}</span>}
+        <button 
+          className="btn btn-secondary" 
+          disabled={busy || mappings.length === 0} 
+          onClick={generateCode}
+        >
+          <Download className="w-4 h-4 mr-2" />
+          {busy ? 'Generating…' : 'Generate Code'}
+        </button>
         <button 
           className="btn btn-primary" 
           disabled={busy || mappings.length === 0} 

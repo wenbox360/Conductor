@@ -128,7 +128,7 @@ export const PARTS: PartDef[] = [
   { id: 'buzzer', name: 'Buzzer',                roles: ['Buzz'],                  minPins: 1, maxPins: 1 },
   { id: 'dht22',  name: 'DHT22 (Temp/Humidity)', roles: ['Temperature','Humidity'],minPins: 1, maxPins: 1 },
   { id: 'hcsr04', name: 'HC-SR04 (Ultrasonic)',  roles: ['Trigger','Echo'],       minPins: 2, maxPins: 2 },
-  { id: 'servo',  name: 'Servo Motor',           roles: ['Control'],               minPins: 1, maxPins: 1 },
+  { id: 'Micro Servo - SG90',  name: 'Micro Servo - SG90',  roles: ['Control'],               minPins: 1, maxPins: 1 },
   { id: 'analog_sensor', name: 'Analog Sensor',  roles: ['Read'],                  minPins: 1, maxPins: 1 },
   { id: 'digital_sensor', name: 'Digital Sensor', roles: ['Read'],                 minPins: 1, maxPins: 1 },
   { id: 'custom', name: 'Custom (multi-pin)',    roles: ['Generic'],              minPins: 1, maxPins: 6 },
