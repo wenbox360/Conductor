@@ -15,6 +15,8 @@ export type BoardDef = {
   gnd?: number[];
   v33?: number[];
   v5?: number[];
+  // Pin mapping from board position to actual pin number/name
+  pinMapping?: Record<number, number | string>;
   // Custom layout for non-standard boards
   customLayout?: {
     type: 'arduino' | 'custom';
@@ -90,11 +92,20 @@ export const ARDUINO_LEONARDO: BoardDef = {
   v5: [22], // 5V pin (bottom right)
   v33: [21], // 3.3V pin (bottom right)
   gnd: [4, 23, 24], // GND pins (top and bottom right)
+  // Pin mapping from board position to actual Arduino pin number
+  pinMapping: {
+    // Top row (left to right): SCL SDA AREF GND 13 12 11 10 9 8 7 6 5 4 3 2 1 0
+    1: 'SCL', 2: 'SDA', 3: 'AREF', 4: 'GND', 5: 13, 6: 12, 7: 11, 8: 10, 
+    9: 9, 10: 8, 11: 7, 12: 6, 13: 5, 14: 4, 15: 3, 16: 2, 17: 1, 18: 0,
+    // Bottom row: TX0 RX0 RESET GND 5V 3.3V Vin A0 A1 A2 A3 A4 A5
+    19: 'TX0', 20: 'RX0', 21: 'RESET', 22: 'GND', 23: '5V', 24: '3.3V', 25: 'VIN',
+    26: 'A0', 27: 'A1', 28: 'A2', 29: 'A3', 30: 'A4', 31: 'A5'
+  },
   oddLabels: {
-    1: 'SCL', 3: 'AREF', 5: '~13', 7: '~11', 9: '~9', 11: '7', 13: '~5', 15: '~3', 17: 'TX1', 19: 'IOREF', 21: '3.3V', 23: 'GND', 25: 'Vin', 27: 'A1', 29: 'A3', 31: 'A5'
+    1: 'SCL', 3: 'AREF', 5: '13', 7: '11', 9: '9', 11: '7', 13: '5', 15: '3', 17: '1', 19: 'TX0', 21: 'RESET', 23: '5V', 25: 'VIN', 27: 'A1', 29: 'A3', 31: 'A5'
   },
   evenLabels: {
-    2: 'SDA', 4: 'GND', 6: '12', 8: '~10', 10: '8', 12: '~6', 14: '4', 16: '2', 18: 'RX0', 20: 'RESET', 22: '5V', 24: 'GND', 26: 'A0', 28: 'A2', 30: 'A4'
+    2: 'SDA', 4: 'GND', 6: '12', 8: '10', 10: '8', 12: '6', 14: '4', 16: '2', 18: '0', 20: 'RX0', 22: 'GND', 24: '3.3V', 26: 'A0', 28: 'A2', 30: 'A4'
   },
   // Custom Arduino layout
   customLayout: {
@@ -125,10 +136,11 @@ export const PARTS: PartDef[] = [
   { id: 'led',    name: 'LED',                   roles: ['Light'],                 minPins: 1, maxPins: 1 },
   { id: 'button', name: 'Button',                roles: ['Press'],                 minPins: 1, maxPins: 1 },
   { id: 'relay',  name: 'Relay',                 roles: ['Switch'],                minPins: 1, maxPins: 1 },
-  { id: 'buzzer', name: 'Buzzer',                roles: ['Buzz'],                  minPins: 1, maxPins: 1 },
+  { id: 'Piezo_Buzzer', name: 'Piezo_Buzzer',                roles: ['Buzz'],                  minPins: 1, maxPins: 1 },
+  { id: 'IR_GP2Y0A21YK0F', name: 'IR-GP2Y0A21YK0F',                roles: ['Distance_Sensor'],                  minPins: 1, maxPins: 1 },
   { id: 'dht22',  name: 'DHT22 (Temp/Humidity)', roles: ['Temperature','Humidity'],minPins: 1, maxPins: 1 },
   { id: 'hcsr04', name: 'HC-SR04 (Ultrasonic)',  roles: ['Trigger','Echo'],       minPins: 2, maxPins: 2 },
-  { id: 'Micro Servo - SG90',  name: 'Micro Servo - SG90',  roles: ['Control'],               minPins: 1, maxPins: 1 },
+  { id: 'Micro_Servo_SG90',  name: 'Micro_Servo_SG90',  roles: ['Control'],     minPins: 1, maxPins: 1 },
   { id: 'analog_sensor', name: 'Analog Sensor',  roles: ['Read'],                  minPins: 1, maxPins: 1 },
   { id: 'digital_sensor', name: 'Digital Sensor', roles: ['Read'],                 minPins: 1, maxPins: 1 },
   { id: 'custom', name: 'Custom (multi-pin)',    roles: ['Generic'],              minPins: 1, maxPins: 6 },
