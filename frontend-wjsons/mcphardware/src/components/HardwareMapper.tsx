@@ -30,11 +30,12 @@ export default function HardwareMapper({
   const board: BoardDef = useMemo(()=> BOARDS.find(b=>b.id===boardId)!, [boardId]);
   const part: PartDef = useMemo(()=> PARTS.find(p=>p.id===partId)!, [partId]);
 
-  // Convert board position to actual pin number
-  function getActualPin(boardPosition: number): number {
+  // Convert board position to actual pin number/name
+  function getActualPin(boardPosition: number): number | string {
     if (board.pinMapping) {
       const mapped = board.pinMapping[boardPosition];
-      return typeof mapped === 'number' ? mapped : boardPosition;
+      // Return the mapped value (could be number like 13 or string like 'A0')
+      return mapped !== undefined ? mapped : boardPosition;
     }
     return boardPosition;
   }
@@ -52,13 +53,14 @@ export default function HardwareMapper({
     // For each actual pin, find its board position
     if (board.pinMapping) {
       Object.entries(board.pinMapping).forEach(([boardPos, actualPin]) => {
-        if (typeof actualPin === 'number' && actualPins.includes(actualPin)) {
+        // Check if this actual pin (number or string) is in use
+        if (actualPins.includes(actualPin)) {
           boardPositions.push(parseInt(boardPos));
         }
       });
     } else {
       // If no mapping, actual pins are the same as board positions
-      boardPositions.push(...actualPins);
+      boardPositions.push(...(actualPins as number[]));
     }
     
     return boardPositions;

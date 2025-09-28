@@ -3,6 +3,6 @@ export type Mapping = {
   boardId: string;
   partId: string;
   role: string;
-  pins: number[];   // single-pin now, but keep array for future-proof
+  pins: (number | string)[];   // can be numbers (like 13) or strings (like 'A0', 'SDA')
   label?: string;
 };
