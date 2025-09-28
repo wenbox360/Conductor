@@ -4,7 +4,7 @@ import os
 import json
 import base64
 from pathlib import Path
-from typing import Dict, Any, List, Optional
+from typing import Dict, Any, List, Optional, Union
 
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
@@ -50,7 +50,7 @@ class Mapping(BaseModel):
     boardId: str
     partId: str
     role: str
-    pins: List[int] = Field(default_factory=list)
+    pins: List[Any] = Field(default_factory=list)  # Can be numbers or strings like 'A0', 'SDA'
     label: Optional[str] = None
 
 class MappingBatch(BaseModel):
@@ -86,12 +86,30 @@ def save_all(items: List[dict]) -> None:
 # -------------------------------------------------------------------
 # Boilerplate Code Generation
 # -------------------------------------------------------------------
+def get_actual_pin_number(board_id: str, board_position: int) -> int:
+    """Convert board position to actual pin number for Arduino boards"""
+    # Arduino Leonardo pin mapping (board position -> actual pin)
+    if board_id == 'leonardo':
+        leonardo_mapping = {
+            # Top row (left to right): SCL SDA AREF GND 13 12 11 10 9 8 7 6 5 4 3 2 1 0
+            5: 13, 6: 12, 7: 11, 8: 10, 9: 9, 10: 8, 11: 7, 12: 6, 
+            13: 5, 14: 4, 15: 3, 16: 2, 17: 1, 18: 0,
+            # Bottom row analog pins
+            26: 'A0', 27: 'A1', 28: 'A2', 29: 'A3', 30: 'A4', 31: 'A5'
+        }
+        return leonardo_mapping.get(board_position, board_position)
+    
+    # For Raspberry Pi or other boards, use the board position as-is
+    return board_position
+
 def generate_pin_definitions(mappings: List[Mapping]) -> List[str]:
     """Generate #define statements for pins from mappings"""
     pin_list = []
     for mapping in mappings:
         if mapping.pins:  # Only if pins are defined
-            pin_str = f"#define {mapping.partId.upper()}_PIN {mapping.pins[0]}"
+            # The mapping now already contains the actual pin number
+            actual_pin = mapping.pins[0]
+            pin_str = f"#define {mapping.partId.upper()}_PIN {actual_pin}"
             pin_list.append(pin_str)
     return pin_list
 
@@ -201,6 +219,87 @@ void loop() {
   }
 }'''
 
+def generate_raspberry_pi_code(mappings: List[Mapping], board_id: str) -> str:
+    """Generate Python code for Raspberry Pi"""
+    code_lines = [
+        f"# Generated Python code for {board_id}",
+        "# Hardware control script",
+        "",
+        "import RPi.GPIO as GPIO",
+        "import time",
+        "import serial",
+        "import json",
+        "",
+        "# Pin definitions",
+    ]
+    
+    # Add pin definitions
+    for mapping in mappings:
+        if mapping.pins:
+            pin_name = f"{mapping.partId.upper()}_PIN"
+            # The mapping now already contains the actual pin number
+            actual_pin = mapping.pins[0]
+            code_lines.append(f"{pin_name} = {actual_pin}  # {mapping.label or mapping.role}")
+    
+    code_lines.extend([
+        "",
+        "# GPIO setup",
+        "GPIO.setmode(GPIO.BCM)",
+        "GPIO.setwarnings(False)",
+        "",
+        "# Setup pins based on part types",
+    ])
+    
+    # Setup pins based on part types
+    for mapping in mappings:
+        if mapping.pins:
+            pin_name = f"{mapping.partId.upper()}_PIN"
+            if mapping.partId in ['led', 'buzzer', 'relay']:
+                code_lines.append(f"GPIO.setup({pin_name}, GPIO.OUT)")
+            elif mapping.partId in ['button', 'digital_sensor']:
+                code_lines.append(f"GPIO.setup({pin_name}, GPIO.IN, pull_up_down=GPIO.PUD_UP)")
+            elif mapping.partId == 'hcsr04':
+                if mapping.role == 'Trigger':
+                    code_lines.append(f"GPIO.setup({pin_name}, GPIO.OUT)")
+                elif mapping.role == 'Echo':
+                    code_lines.append(f"GPIO.setup({pin_name}, GPIO.IN)")
+    
+    code_lines.extend([
+        "",
+        "def cleanup():",
+        "    \"\"\"Clean up GPIO pins\"\"\"",
+        "    GPIO.cleanup()",
+        "",
+        "def main():",
+        "    \"\"\"Main control loop\"\"\"",
+        "    try:",
+        "        print(f'Hardware controller started for {board_id}')",
+        "        print('Available pins:')",
+    ])
+    
+    # Print available pins
+    for mapping in mappings:
+        if mapping.pins:
+            code_lines.append(f"        print('  {mapping.partId} ({mapping.role}): GPIO {mapping.pins[0]}')")
+    
+    code_lines.extend([
+        "",
+        "        # Main control loop",
+        "        while True:",
+        "            # Add your control logic here",
+        "            time.sleep(0.1)",
+        "",
+        "    except KeyboardInterrupt:",
+        "        print('\\nShutting down...')",
+        "    finally:",
+        "        cleanup()",
+        "",
+        "if __name__ == '__main__':",
+        "    main()",
+    ])
+    
+    return "\n".join(code_lines)
+
 def generate_arduino_code(mappings: List[Mapping], board_id: str) -> str:
     """Generate complete Arduino code with pin definitions and boilerplate"""
     pin_definitions = generate_pin_definitions(mappings)
@@ -218,6 +317,17 @@ def generate_arduino_code(mappings: List[Mapping], board_id: str) -> str:
     code_lines.extend(["", boilerplate])
     
     return "\n".join(code_lines)
+
+def generate_code_for_board(mappings: List[Mapping], board_id: str) -> tuple[str, str]:
+    """Generate code appropriate for the board type. Returns (code, file_extension)"""
+    if board_id.startswith('pi') or 'raspberry' in board_id.lower():
+        # Raspberry Pi - generate Python code
+        code = generate_raspberry_pi_code(mappings, board_id)
+        return code, "py"
+    else:
+        # Arduino - generate Arduino code
+        code = generate_arduino_code(mappings, board_id)
+        return code, "ino"
 
 # -------------------------------------------------------------------
 # Helper: format MCP tools for Claude
@@ -421,17 +531,18 @@ def delete_mapping(mapping_id: str):
 
 @app.post("/generate-code")
 def generate_code(request: CodeGenerationRequest):
-    """Generate Arduino code from mappings"""
+    """Generate code from mappings (Python for Pi, Arduino for Arduino boards)"""
     if not request.mappings:
         raise HTTPException(400, "No mappings provided")
     
     try:
-        code = generate_arduino_code(request.mappings, request.boardId)
+        code, file_extension = generate_code_for_board(request.mappings, request.boardId)
         return {
             "ok": True,
             "code": code,
             "boardId": request.boardId,
-            "mappingCount": len(request.mappings)
+            "mappingCount": len(request.mappings),
+            "fileExtension": file_extension
         }
     except Exception as e:
         raise HTTPException(500, f"Code generation failed: {str(e)}")
