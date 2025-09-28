@@ -1,10 +1,5 @@
 #include <Servo.h>
 
-#define IR_PIN      A0
-#define BUZZER_PIN  6
-#define SERVO_PIN   8
-#define LED_PIN     7
-
 Servo turretServo;
 
 char inputBuffer[32];     // buffer for incoming serial data

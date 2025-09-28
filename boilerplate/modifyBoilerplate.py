@@ -28,7 +28,7 @@ def import_sensor_functions(input_json, function_map):
 '''
 
 def make_unique(input_json):
-    with open("boilerplate/boilerplate.json", "r") as f:
+    with open("boilerplate/boilerplate.c", "r") as f:
         boilerplate = f.read()
     with open(input_json, "r") as f:
         input = f.read()
