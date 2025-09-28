@@ -11,8 +11,8 @@ const unsigned long irInterval = 200; // send IR data every 200ms
 void setup() {
   Serial.begin(9600);
   pinMode(LED_PIN, OUTPUT);
-  pinMode(BUZZER_PIN, OUTPUT);
-  turretServo.attach(SERVO_PIN);
+  pinMode(PIEZO_BUZZER_PIN, OUTPUT);
+  turretServo.attach(MICRO_SERVO_SG90_PIN);
 }
 
 void servo_write(int angle) {
@@ -20,13 +20,21 @@ void servo_write(int angle) {
 }
 
 int irSensorReading() {
-  return analogRead(IR_PIN);
+  int raw = analogRead(IR_GP2Y0A21YK0F_PIN);
+  float voltage = raw * (5.0 / 1023.0);  // convert ADC to voltage (assuming 5V ref)
+
+  if (voltage <= 0.42) {
+    return -1; // out of range / invalid
+  }
+
+  float distance_cm = 27.86 / (voltage - 0.42);
+  return (int)distance_cm;
 }
 
 void buzzer_duration(int duration) {
-  tone(BUZZER_PIN, 1000);
+  tone(PIEZO_BUZZER_PIN, 1000);
   delay(duration);
-  noTone(BUZZER_PIN);
+  noTone(PIEZO_BUZZER_PIN);
 }
 
 void led_on() {
@@ -93,6 +101,7 @@ void loop() {
     lastIrSend = now;
     int irValue = irSensorReading();
     Serial.print("40,");
-    Serial.println(irValue);
+    Serial.print(irValue);
+    Serial.print(";");
   }
 }

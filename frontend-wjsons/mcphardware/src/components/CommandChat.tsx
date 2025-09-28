@@ -14,112 +14,75 @@ export default function CommandChat({
   callUrl: string;
   mappings: Mapping[];
 }) {
-  type Msg = { who: 'user' | 'bot'; text: string };
+  type Msg = { who: 'user' | 'bot'; text: string; loading?: boolean };
   const [msgs, setMsgs] = useState<Msg[]>([
-    { who: 'bot', text: 'Hi! Ask me things like “what’s the temperature?” or “turn the relay on”.' }
+    { who: 'bot', text: 'Hi! I\'m your AI hardware assistant powered by Claude. Ask me anything about your connected devices - temperature, humidity, controlling relays, or any other hardware operations!' }
   ]);
   const [text, setText] = useState('');
+  const [isLoading, setIsLoading] = useState(false);
   const boxRef = useRef<HTMLDivElement | null>(null);
   const scroll = () => { if (boxRef.current) boxRef.current.scrollTop = boxRef.current.scrollHeight; };
 
-  function say(who: Msg['who'], t: string) {
-    setMsgs(m => [...m, { who, text: t }]);
+  function say(who: Msg['who'], t: string, loading = false) {
+    setMsgs(m => [...m, { who, text: t, loading }]);
     queueMicrotask(scroll);
   }
 
-  function findTool(re: RegExp): Tool | undefined {
-    return tools.find(t => re.test(t.name));
+  function updateLastMessage(t: string, loading = false) {
+    setMsgs(m => {
+      const newMsgs = [...m];
+      if (newMsgs.length > 0) {
+        newMsgs[newMsgs.length - 1] = { ...newMsgs[newMsgs.length - 1], text: t, loading };
+      }
+      return newMsgs;
+    });
+    queueMicrotask(scroll);
   }
 
   async function handleSend(e?: React.FormEvent) {
     e?.preventDefault();
     const q = text.trim();
-    if (!q) return;
+    if (!q || isLoading) return;
+    
     say('user', q);
     setText('');
+    setIsLoading(true);
+    
+    // Add a loading message
+    say('bot', 'Thinking...', true);
 
     try {
-      // --- Intent 1: Temperature ---
-      if (/(temp|temperature)\b/i.test(q)) {
-        const m = mappings.find(x => /temperature/i.test(x.role));
-        if (!m) { say('bot', 'I couldn’t find a saved mapping with role “Temperature”. Add one in Hardware Setup.'); return; }
+      // Create context about available hardware for the agent
+      const hardwareContext = mappings.length > 0 
+        ? `\n\nAvailable hardware mappings:\n${mappings.map(m => 
+            `- ${m.role}${m.label ? ` (${m.label})` : ''}: pins ${m.pins.join(', ')}`
+          ).join('\n')}`
+        : '\n\nNo hardware mappings configured yet.';
 
-        // Prefer a tool that looks like it can read DHT / temperature
-        const tool =
-          findTool(/read.*temp|temperature|dht/i) ||
-          findTool(/sensor.*read/i);
+      const availableTools = tools.length > 0
+        ? `\n\nAvailable MCP tools:\n${tools.map(t => 
+            `- ${t.name}: ${t.description || 'No description'}`
+          ).join('\n')}`
+        : '\n\nNo MCP tools available.';
 
-        if (!tool) {
-          say('bot', 'No temperature-reading tool discovered. Expose one in your MCP bridge (e.g., `read_temperature`).');
-          return;
-        }
+      const contextualQuery = `${q}${hardwareContext}${availableTools}`;
 
-        // Common arg names handled; adapt as needed
-        const args: Record<string, any> = {};
-        // try typical schema fields if present
-        const props = tool.input_schema?.properties || {};
-        if ('pin' in props) args.pin = m.pins[0];
-        else if ('gpio' in props) args.gpio = m.pins[0];
-        else if ('pins' in props) args.pins = m.pins;
-        else args.pin = m.pins[0];
+      // Call the Anthropic agent
+      const response = await jsonFetch<{ reply: string }>('/api/mcp/call/agent/chat', {
+        method: 'POST',
+        body: JSON.stringify({ 
+          text: contextualQuery,
+          session_id: 'hardware_chat'
+        })
+      });
 
-        const res = await jsonFetch<any>(callUrl, { method: 'POST', body: JSON.stringify({ name: tool.name, args }) });
-        const value = res?.temperature ?? res?.temp_c ?? res?.value ?? res?.result ?? JSON.stringify(res);
-        say('bot', `Temperature${m.label ? ` (${m.label})` : ''}: ${value}`);
-        return;
-      }
-
-      // --- Intent 2: Humidity ---
-      if (/\b(humidity|humid)\b/i.test(q)) {
-        const m = mappings.find(x => /humidity/i.test(x.role));
-        if (!m) { say('bot', 'No mapping with role “Humidity”. Add one in Hardware Setup.'); return; }
-        const tool = findTool(/read.*humidity|dht/i) || findTool(/sensor.*read/i);
-        if (!tool) { say('bot', 'No humidity-reading tool found (try exposing `read_humidity`).'); return; }
-
-        const props = tool.input_schema?.properties || {};
-        const args: Record<string, any> =
-          'pin' in props ? { pin: m.pins[0] } :
-          'gpio' in props ? { gpio: m.pins[0] } :
-          'pins' in props ? { pins: m.pins } :
-          { pin: m.pins[0] };
-
-        const res = await jsonFetch<any>(callUrl, { method: 'POST', body: JSON.stringify({ name: tool.name, args }) });
-        const value = res?.humidity ?? res?.value ?? res?.result ?? JSON.stringify(res);
-        say('bot', `Humidity${m.label ? ` (${m.label})` : ''}: ${value}`);
-        return;
-      }
-
-      // --- Intent 3: Relay / Switch on/off ---
-      if (/\b(relay|switch)\b/i.test(q) && /\b(on|off)\b/i.test(q)) {
-        const turnOn = /\bon\b/i.test(q);
-        const m = mappings.find(x => /switch/i.test(x.role));
-        if (!m) { say('bot', 'No mapping with role “Switch”. Map your relay first.'); return; }
-        const tool = findTool(/relay|switch|gpio.*write|digital.*write/i);
-        if (!tool) { say('bot', 'No relay control tool found (expose one like `relay_set` or `gpio_write`).'); return; }
-
-        const props = tool.input_schema?.properties || {};
-        const args: Record<string, any> = {
-          ...( 'pin'  in props ? { pin: m.pins[0] } :
-              'gpio' in props ? { gpio: m.pins[0] } :
-              'pins' in props ? { pins: m.pins } : { pin: m.pins[0] })
-        };
-
-        // Value field name heuristics
-        if ('state' in props) args.state = turnOn ? 'on' : 'off';
-        else if ('value' in props) args.value = turnOn ? 1 : 0;
-        else if ('level' in props) args.level = turnOn ? 1 : 0;
-        else args.value = turnOn ? 1 : 0;
-
-        await jsonFetch<any>(callUrl, { method: 'POST', body: JSON.stringify({ name: tool.name, args }) });
-        say('bot', `Relay ${turnOn ? 'ON' : 'OFF'} on pin ${m.pins[0]}${m.label ? ` (${m.label})` : ''}.`);
-        return;
-      }
-
-      // Fallback
-      say('bot', 'I didn’t recognize that. Try: “what’s the temperature?”, “humidity?”, or “turn the relay on/off”.');
+      updateLastMessage(response.reply || 'I received your message but couldn\'t generate a response.');
 
     } catch (err: any) {
-      say('bot', `Error: ${err.message || String(err)}`);
+      console.error('Agent error:', err);
+      updateLastMessage(`Sorry, I encountered an error: ${err.message || 'Unknown error'}. Please try again.`);
+    } finally {
+      setIsLoading(false);
     }
   }
 
@@ -130,7 +93,7 @@ export default function CommandChat({
         <ul className="space-y-2">
           {msgs.map((m, i) => (
             <li key={i} className={`text-sm ${m.who==='user' ? 'text-right' : ''}`}>
-              <span className={`inline-block px-3 py-2 rounded-xl ${m.who==='user' ? 'bg-white/10' : 'bg-white/5'}`}>
+              <span className={`inline-block px-3 py-2 rounded-xl ${m.who==='user' ? 'bg-white/10' : 'bg-white/5'} ${m.loading ? 'animate-pulse' : ''}`}>
                 {m.text}
               </span>
             </li>
@@ -140,11 +103,19 @@ export default function CommandChat({
       <form onSubmit={handleSend} className="flex gap-2">
         <input
           className="input"
-          placeholder="Ask for temperature, humidity, or relay on/off…"
+          placeholder="Ask me anything about your hardware..."
           value={text}
           onChange={e=>setText(e.target.value)}
+          disabled={isLoading}
         />
-        <button className="btn btn-primary" type="submit"><Send className="w-4 h-4 mr-2" />Send</button>
+        <button 
+          className="btn btn-primary" 
+          type="submit" 
+          disabled={isLoading || !text.trim()}
+        >
+          <Send className="w-4 h-4 mr-2" />
+          {isLoading ? 'Sending...' : 'Send'}
+        </button>
       </form>
     </div>
   );

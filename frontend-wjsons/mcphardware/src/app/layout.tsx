@@ -9,8 +9,8 @@ const geistSans = Geist({ variable: "--font-geist-sans", subsets: ["latin"] });
 const geistMono = Geist_Mono({ variable: "--font-geist-mono", subsets: ["latin"] });
 
 export const metadata: Metadata = {
-  title: "MCP GPIO Control",
-  description: "Let AI discover and use your tools.",
+  title: "Hardware Hub",
+  description: "Connect and control your hardware devices with AI assistance.",
 };
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {
@@ -22,19 +22,19 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
           <div className="container header-inner">
             <div className="brand">
               <div className="dot" />
-              <span>MCP GPIO</span>
+              <span>Hardware Hub</span>
             </div>
             <nav>
-              <a href="#discover">Discover</a>
+              <a href="#setup">Setup</a>
+              <a href="#discover">Tools</a>
               <a href="#control">Control</a>
-              <a href="#events">Events</a>
-              <a href="https://github.com" target="_blank" rel="noreferrer">GitHub</a>
+              <a href="#events">Logs</a>
             </nav>
           </div>
         </header>
         <main className="container px-5 py-10">{children}</main>
-        <footer className="container py-10 opacity-70 text-sm">
-          Built with FastMCP • Designed for clarity & speed
+        <footer className="container py-10 text-muted text-sm">
+          Hardware Hub • Connect, control, automate
         </footer>
       </body>
     </html>

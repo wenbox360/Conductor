@@ -3,7 +3,9 @@
   "version": "0.1.0",
   "private": true,
   "scripts": {
-    "dev": "next dev --turbopack",
+    "clear-mappings": "node clear-mappings.js",
+    "dev": "npm run clear-mappings && next dev --turbopack",
+    "dev:no-clear": "next dev --turbopack",
     "build": "next build --turbopack",
     "start": "next start",
     "lint": "eslint"
@@ -13,7 +15,7 @@
     "@react-three/fiber": "^9.3.0",
     "framer-motion": "^12.23.22",
     "lucide-react": "^0.544.0",
-    "next": "15.5.4",
+    "next": "^15.5.4",
     "react": "19.1.0",
     "react-dom": "19.1.0",
     "three": "^0.180.0"

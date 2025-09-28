@@ -5,7 +5,7 @@ import BoardMap from './BoardMap';
 import { BOARDS, PARTS, type BoardDef, type PartDef } from '@/lib/boards';
 import type { Tool } from '@/lib/api';
 import { jsonFetch } from '@/lib/api';
-import { Plug, Plus, Save } from 'lucide-react';
+import { Plug, Plus, Save, Download } from 'lucide-react';
 import type { Mapping } from '@/types/mapping';
 
 export default function HardwareMapper({
@@ -30,12 +30,41 @@ export default function HardwareMapper({
   const board: BoardDef = useMemo(()=> BOARDS.find(b=>b.id===boardId)!, [boardId]);
   const part: PartDef = useMemo(()=> PARTS.find(p=>p.id===partId)!, [partId]);
 
+  // Convert board position to actual pin number/name
+  function getActualPin(boardPosition: number): number | string {
+    if (board.pinMapping) {
+      const mapped = board.pinMapping[boardPosition];
+      // Return the mapped value (could be number like 13 or string like 'A0')
+      return mapped !== undefined ? mapped : boardPosition;
+    }
+    return boardPosition;
+  }
+
   // Support both legacy pinCount and new minPins/maxPins
   const minPins: number = part.minPins ?? part.pinCount ?? 1;
   const maxPins: number = part.maxPins ?? part.pinCount ?? 1;
 
   // Pins already claimed by other mappings (to disable on the map)
-  const usedPins = useMemo(()=> mappings.flatMap(m => m.pins), [mappings]);
+  // Convert actual pins back to board positions for UI display
+  const usedPins = useMemo(() => {
+    const actualPins = mappings.flatMap(m => m.pins);
+    const boardPositions: number[] = [];
+    
+    // For each actual pin, find its board position
+    if (board.pinMapping) {
+      Object.entries(board.pinMapping).forEach(([boardPos, actualPin]) => {
+        // Check if this actual pin (number or string) is in use
+        if (actualPins.includes(actualPin)) {
+          boardPositions.push(parseInt(boardPos));
+        }
+      });
+    } else {
+      // If no mapping, actual pins are the same as board positions
+      boardPositions.push(...(actualPins as number[]));
+    }
+    
+    return boardPositions;
+  }, [mappings, board.pinMapping]);
   // Power & ground (always disabled for selection)
   const powerAndGnd = useMemo(
     () => [ ...(board.v5 ?? []), ...(board.v33 ?? []), ...(board.gnd ?? []) ],
@@ -62,15 +91,20 @@ export default function HardwareMapper({
       setMsg(`Select exactly 1 pin for ${part.name}.`);
       return;
     }
-    const pin = selectedPins[0];
-    if (usedPins.includes(pin)) {
-      setMsg(`Pin ${pin} is already used by another mapping.`);
+    const boardPosition = selectedPins[0];
+    const actualPin = getActualPin(boardPosition);
+    
+    // Check if the actual pin is already used
+    const usedActualPins = mappings.flatMap(m => m.pins);
+    if (usedActualPins.includes(actualPin)) {
+      setMsg(`Pin ${actualPin} is already used by another mapping.`);
       return;
     }
+    
     const m: Mapping = {
       id: crypto.randomUUID(),
       boardId, partId, role,
-      pins: [pin],                      // always single element
+      pins: [actualPin],                // Store the actual pin number, not board position
       label: label || undefined
     };
     setMappings(prev=>[...prev, m]);
@@ -112,6 +146,57 @@ async function saveAll(){
     onSaved?.(mappings);
   } catch (e:any) {
     setMsg(`Save failed: ${e.message}`);
+  } finally {
+    setBusy(false);
+  }
+}
+
+async function generateCode() {
+  if (!mappings.length) {
+    setMsg('No mappings to generate code for. Add some hardware mappings first.');
+    return;
+  }
+  
+  setBusy(true);
+  setMsg('Generating code...');
+  
+  try {
+    const resp = await fetch('/api/generate-code', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ 
+        mappings, 
+        boardId 
+      }),
+    });
+    
+    if (!resp.ok) {
+      const err = await resp.text().catch(() => '');
+      throw new Error(`Code generation failed (${resp.status}) ${err}`);
+    }
+    
+    const data = await resp.json();
+    
+    if (data.code) {
+      // Create a downloadable file with appropriate extension
+      const fileExtension = data.fileExtension || 'txt';
+      const blob = new Blob([data.code], { type: 'text/plain' });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `${boardId}_generated_code.${fileExtension}`;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      URL.revokeObjectURL(url);
+      
+      const codeType = fileExtension === 'py' ? 'Python' : 'Arduino';
+      setMsg(`${codeType} code generated and downloaded! (${data.mappingCount} mappings)`);
+    } else {
+      throw new Error('No code returned from server');
+    }
+  } catch (e: any) {
+    setMsg(`Code generation failed: ${e.message}`);
   } finally {
     setBusy(false);
   }
@@ -223,9 +308,17 @@ async function saveAll(){
         )}
       </div>
 
-      {/* Save */}
+      {/* Save & Generate */}
       <div className="flex items-center gap-3 justify-end">
         {msg && <span className="text-xs opacity-80">{msg}</span>}
+        <button 
+          className="btn btn-secondary" 
+          disabled={busy || mappings.length === 0} 
+          onClick={generateCode}
+        >
+          <Download className="w-4 h-4 mr-2" />
+          {busy ? 'Generating…' : 'Generate Code'}
+        </button>
         <button 
           className="btn btn-primary" 
           disabled={busy || mappings.length === 0} 
