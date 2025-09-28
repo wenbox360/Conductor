@@ -30,12 +30,39 @@ export default function HardwareMapper({
   const board: BoardDef = useMemo(()=> BOARDS.find(b=>b.id===boardId)!, [boardId]);
   const part: PartDef = useMemo(()=> PARTS.find(p=>p.id===partId)!, [partId]);
 
+  // Convert board position to actual pin number
+  function getActualPin(boardPosition: number): number {
+    if (board.pinMapping) {
+      const mapped = board.pinMapping[boardPosition];
+      return typeof mapped === 'number' ? mapped : boardPosition;
+    }
+    return boardPosition;
+  }
+
   // Support both legacy pinCount and new minPins/maxPins
   const minPins: number = part.minPins ?? part.pinCount ?? 1;
   const maxPins: number = part.maxPins ?? part.pinCount ?? 1;
 
   // Pins already claimed by other mappings (to disable on the map)
-  const usedPins = useMemo(()=> mappings.flatMap(m => m.pins), [mappings]);
+  // Convert actual pins back to board positions for UI display
+  const usedPins = useMemo(() => {
+    const actualPins = mappings.flatMap(m => m.pins);
+    const boardPositions: number[] = [];
+    
+    // For each actual pin, find its board position
+    if (board.pinMapping) {
+      Object.entries(board.pinMapping).forEach(([boardPos, actualPin]) => {
+        if (typeof actualPin === 'number' && actualPins.includes(actualPin)) {
+          boardPositions.push(parseInt(boardPos));
+        }
+      });
+    } else {
+      // If no mapping, actual pins are the same as board positions
+      boardPositions.push(...actualPins);
+    }
+    
+    return boardPositions;
+  }, [mappings, board.pinMapping]);
   // Power & ground (always disabled for selection)
   const powerAndGnd = useMemo(
     () => [ ...(board.v5 ?? []), ...(board.v33 ?? []), ...(board.gnd ?? []) ],
@@ -62,15 +89,20 @@ export default function HardwareMapper({
       setMsg(`Select exactly 1 pin for ${part.name}.`);
       return;
     }
-    const pin = selectedPins[0];
-    if (usedPins.includes(pin)) {
-      setMsg(`Pin ${pin} is already used by another mapping.`);
+    const boardPosition = selectedPins[0];
+    const actualPin = getActualPin(boardPosition);
+    
+    // Check if the actual pin is already used
+    const usedActualPins = mappings.flatMap(m => m.pins);
+    if (usedActualPins.includes(actualPin)) {
+      setMsg(`Pin ${actualPin} is already used by another mapping.`);
       return;
     }
+    
     const m: Mapping = {
       id: crypto.randomUUID(),
       boardId, partId, role,
-      pins: [pin],                      // always single element
+      pins: [actualPin],                // Store the actual pin number, not board position
       label: label || undefined
     };
     setMappings(prev=>[...prev, m]);
@@ -144,18 +176,20 @@ async function generateCode() {
     const data = await resp.json();
     
     if (data.code) {
-      // Create a downloadable file
+      // Create a downloadable file with appropriate extension
+      const fileExtension = data.fileExtension || 'txt';
       const blob = new Blob([data.code], { type: 'text/plain' });
       const url = URL.createObjectURL(blob);
       const a = document.createElement('a');
       a.href = url;
-      a.download = `${boardId}_generated_code.ino`;
+      a.download = `${boardId}_generated_code.${fileExtension}`;
       document.body.appendChild(a);
       a.click();
       document.body.removeChild(a);
       URL.revokeObjectURL(url);
       
-      setMsg(`Arduino code generated and downloaded! (${data.mappingCount} mappings)`);
+      const codeType = fileExtension === 'py' ? 'Python' : 'Arduino';
+      setMsg(`${codeType} code generated and downloaded! (${data.mappingCount} mappings)`);
     } else {
       throw new Error('No code returned from server');
     }
