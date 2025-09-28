@@ -1,0 +1,4 @@
+fastmcp
+serial
+anthropic
+pyserial
