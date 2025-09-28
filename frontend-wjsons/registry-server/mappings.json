@@ -48,5 +48,45 @@
       40
     ],
     "label": "asd"
+  },
+  {
+    "id": "94609c4d-0f76-4ef1-b81f-67f166e4dc65",
+    "boardId": "leonardo",
+    "partId": "IR_GP2Y0A21YK0F",
+    "role": "Distance_Sensor",
+    "pins": [
+      26
+    ],
+    "label": null
+  },
+  {
+    "id": "698b0332-0438-4119-ba9e-cce0eb854050",
+    "boardId": "leonardo",
+    "partId": "Piezo_Buzzer",
+    "role": "Buzz",
+    "pins": [
+      6
+    ],
+    "label": null
+  },
+  {
+    "id": "1c1fc711-bb3c-4734-8be2-70aab7a605be",
+    "boardId": "leonardo",
+    "partId": "Micro_Servo_SG90",
+    "role": "Control",
+    "pins": [
+      8
+    ],
+    "label": null
+  },
+  {
+    "id": "7b08e14d-440b-4219-9c22-b5865a72c5c5",
+    "boardId": "leonardo",
+    "partId": "led",
+    "role": "Light",
+    "pins": [
+      7
+    ],
+    "label": null
   }
 ]
