@@ -6,7 +6,6 @@ import type { Tool } from '@/lib/api';
 import { jsonFetch } from '@/lib/api';
 import { Bolt, Radio, Cable, Webhook, Lightbulb } from 'lucide-react';
 import dynamic from 'next/dynamic';
-import { motion } from 'framer-motion';
 import HardwareMapper from '@/components/HardwareMapper';
 import CommandChat from '@/components/CommandChat';
 
@@ -14,7 +13,15 @@ import CommandChat from '@/components/CommandChat';
 const Scene3D = dynamic(() => import('@/components/Scene3D'), { ssr: false });
 
 function Badge({ ok, label }: { ok: boolean; label?: string }) {
-  return <span className={`badge ${ok ? 'border-cyan-700 bg-cyan-600/30' : ''}`}>{label ?? (ok? 'OK':'—')}</span>;
+  return (
+    <span className={`badge ${
+      ok 
+        ? 'border-status-success/30 bg-status-success/10 text-status-success' 
+        : 'border-status-error/30 bg-status-error/10 text-status-error'
+    }`}>
+      {label ?? (ok ? 'OK' : '—')}
+    </span>
+  );
 }
 
 function SchemaForm({ schema, value, onChange }: { schema: any; value: any; onChange: (v:any)=>void }) {
@@ -31,7 +38,7 @@ function SchemaForm({ schema, value, onChange }: { schema: any; value: any; onCh
         const set = (v:any)=>onChange({ ...(value||{}), [k]: v });
         return (
           <div key={k}>
-            <label className="block mb-1 text-sm opacity-80">{title}{isReq && <span className="text-rose-400"> *</span>}</label>
+            <label className="block mb-1 text-sm text-muted">{title}{isReq && <span className="text-status-error"> *</span>}</label>
             {enums?.length ? (
               <select className="input" value={val} onChange={(e)=>set(e.target.value)}>
                 {enums.map((o)=> <option key={String(o)} value={o}>{String(o)}</option>)}
@@ -138,26 +145,23 @@ export default function Page() {
 
       {/* HERO */}
       <section className="section-grid items-center gap-10">
-        <motion.div
-          initial={{opacity:0, y:8}} animate={{opacity:1, y:0}} transition={{duration:.6, ease:'easeOut'}}
-          className="space-y-4"
-        >
+        <div className="space-y-4">
           <h1 className="tracking-tight">
-            Let AI <span className="text-[hsl(var(--accent))]">discover</span> and use your tools.
+            Connect and <span className="text-[hsl(var(--accent))]">control</span> your hardware devices.
           </h1>
-          <p className="opacity-80 max-w-[54ch]">
-            MCP standardizes capability discovery, safe execution, and streaming for AI agents.
-            Point this dashboard at your FastMCP bridge and control real hardware in minutes.
+          <p className="text-muted max-w-[54ch] text-lg leading-relaxed">
+            Hardware Hub provides a unified interface to discover, configure, and control 
+            your IoT devices and hardware components with AI assistance.
           </p>
           <div className="flex gap-2">
-            <a className="btn btn-primary" href="#discover"><Bolt className="w-4 h-4 mr-2"/>Get Started</a>
-            <a className="btn btn-ghost" href="#control">Try Controls</a>
+            <a className="btn btn-primary" href="#setup"><Bolt className="w-4 h-4 mr-2"/>Get Started</a>
+            <a className="btn btn-ghost" href="#discover">View Tools</a>
           </div>
-        </motion.div>
+        </div>
 
-        <motion.div initial={{opacity:0, scale:.98}} animate={{opacity:1, scale:1}} transition={{duration:.7, ease:'easeOut'}}>
+        <div>
           <Scene3D />
-        </motion.div>
+        </div>
       </section>
 
 
@@ -166,15 +170,15 @@ export default function Page() {
         <HardwareMapper tools={tools} callUrl={callUrl} onSaved={setSavedMappings} initialMappings={savedMappings}/>
         <div className="card shine">
           <h3 className="text-lg font-semibold mb-3">What this does</h3>
-          <p className="opacity-80 text-sm">
+          <p className="text-muted text-sm leading-relaxed">
             Choose your board, pick a part type, then click the GPIO header to select pins.
-            Assign a role (e.g., <b>Temperature</b>) and save. If your FastMCP server exposes a
-            <code className="font-mono">register_mapping</code> tool, the mappings will be sent automatically
+            Assign a role (e.g., <b className="text-accent">Temperature</b>) and save. If your FastMCP server exposes a
+            <code className="font-mono bg-surface-subtle px-2 py-1 rounded text-accent-emerald">register_mapping</code> tool, the mappings will be sent automatically
             so the LLM can call the right tool with the right pins—no if/else spaghetti.
           </p>
-          <ul className="opacity-80 text-sm mt-3 list-disc pl-5 space-y-1">
-            <li><b>DHT22</b> uses one data pin (power/ground assumed from wiring).</li>
-            <li><b>HC-SR04</b> uses two pins (Trigger/Echo).</li>
+          <ul className="text-muted text-sm mt-3 list-disc pl-5 space-y-1">
+            <li><b className="text-accent-purple">DHT22</b> uses one data pin (power/ground assumed from wiring).</li>
+            <li><b className="text-accent-emerald">HC-SR04</b> uses two pins (Trigger/Echo).</li>
             <li>Add more boards/components later without code changes.</li>
           </ul>
         </div>
@@ -183,9 +187,9 @@ export default function Page() {
         <CommandChat tools={tools} callUrl={callUrl} mappings={savedMappings as any}/>
         <div className="card shine">
           <h3 className="text-lg font-semibold mb-2">Tips</h3>
-          <ul className="text-sm opacity-80 list-disc pl-5 space-y-1">
-            <li>Map a DHT22 to a pin with role <b>Temperature</b> (and optionally <b>Humidity</b>), then ask for readings.</li>
-            <li>Map your relay as role <b>Switch</b>, then say “turn the relay on”.</li>
+          <ul className="text-sm text-muted list-disc pl-5 space-y-1">
+            <li>Map a DHT22 to a pin with role <b className="text-accent">Temperature</b> (and optionally <b className="text-accent-purple">Humidity</b>), then ask for readings.</li>
+            <li>Map your relay as role <b className="text-accent-emerald">Switch</b>, then say "turn the relay on".</li>
           </ul>
         </div>
       </section>
@@ -193,10 +197,10 @@ export default function Page() {
 
       {/* DISCOVER + CALL */}
       <section id="discover" className="section-grid">
-        <motion.div initial={{opacity:0, y:10}} whileInView={{opacity:1, y:0}} viewport={{once:true}} transition={{duration:.5}} className="card shine">
+        <div className="card shine">
           <div className="flex items-center justify-between mb-3">
-            <h3 className="text-lg font-semibold flex items-center gap-2"><Webhook className="w-5 h-5"/> Discovered Tools</h3>
-            <Badge ok={toolsOk} label={toolsOk? 'Tools OK':'No tools'} />
+            <h3 className="text-lg font-semibold flex items-center gap-2"><Webhook className="w-5 h-5"/> Available Tools</h3>
+            <Badge ok={toolsOk} label={toolsOk? 'Connected':'Disconnected'} />
           </div>
           <div className="flex gap-2 mb-3">
             <input className="input" value={toolsUrl} onChange={(e)=>setToolsUrl(e.target.value)} placeholder="/api/mcp/tools"/>
@@ -216,42 +220,42 @@ export default function Page() {
               <button
                 key={t.name}
                 onClick={()=>{setSelected(t); setArgs({});}}
-                className={`w-full text-left card p-3 bg-white/5 hover:bg-white/[.08] transition ${selected?.name===t.name?'ring-1 ring-cyan-600':''}`}
+                className={`w-full text-left card p-3 bg-surface-subtle hover:bg-surface-hover transition ${selected?.name===t.name?'ring-1 ring-accent':''}`}
               >
                 <div className="font-mono text-sm font-semibold">{t.name}</div>
-                {t.description && <div className="opacity-80 text-sm mt-1">{t.description}</div>}
+                {t.description && <div className="text-muted text-sm mt-1">{t.description}</div>}
               </button>
             ))}
-            {!tools.length && <div className="opacity-70 text-sm">Start your MCP bridge and expose /tools.</div>}
+            {!tools.length && <div className="text-muted-foreground text-sm">Connect your hardware bridge to discover available tools.</div>}
           </div>
-        </motion.div>
+        </div>
 
-        <motion.div initial={{opacity:0, y:10}} whileInView={{opacity:1, y:0}} viewport={{once:true}} transition={{duration:.5, delay:.1}} className="card shine">
+        <div className="card shine">
           <div className="flex items-center justify-between mb-3">
             <h3 className="text-lg font-semibold flex items-center gap-2"><Cable className="w-5 h-5"/> Call a Tool</h3>
             <span className="badge">Schema-driven</span>
           </div>
           {!selected ? (
-            <div className="opacity-70 text-sm">Select a tool.</div>
+            <div className="text-muted-foreground text-sm">Select a tool.</div>
           ) : (
             <>
               {selected.input_schema ? (
                 <SchemaForm schema={selected.input_schema} value={args} onChange={setArgs}/>
               ) : (
-                <div className="opacity-70 text-sm">This tool has no schema; pass args in your client.</div>
+                <div className="text-muted-foreground text-sm">This tool has no schema; pass args in your client.</div>
               )}
               <div className="mt-4 flex justify-end">
                 <button className="btn btn-primary" onClick={callTool}>Run Tool</button>
               </div>
             </>
           )}
-        </motion.div>
+        </div>
       </section>
 
       {/* CONTROL + EVENTS */}
       <section id="control" className="section-grid">
-        <motion.div initial={{opacity:0, y:10}} whileInView={{opacity:1, y:0}} viewport={{once:true}} transition={{duration:.5}} className="card shine">
-          <h3 className="text-lg font-semibold mb-3 flex items-center gap-2"><Lightbulb className="w-5 h-5"/> LED Controls (REST)</h3>
+        <div className="card shine">
+          <h3 className="text-lg font-semibold mb-3 flex items-center gap-2"><Lightbulb className="w-5 h-5"/> Device Controls</h3>
           <div className="grid grid-cols-3 gap-2 mb-4">
             <button className="btn btn-primary" onClick={()=>restLed('on')}>On</button>
             <button className="btn btn-ghost" onClick={()=>restLed('off')}>Off</button>
@@ -259,36 +263,42 @@ export default function Page() {
           </div>
           <div className="grid grid-cols-2 gap-3 mb-4">
             <div>
-              <label className="block mb-1 text-sm opacity-80">Blink period (s)</label>
+              <label className="block mb-1 text-sm text-muted">Blink period (s)</label>
               <input className="input" type="number" step="0.05" min={0.05} max={2} value={period} onChange={(e)=>setPeriod(Number(e.target.value))}/>
             </div>
             <div>
-              <label className="block mb-1 text-sm opacity-80">Blink cycles</label>
+              <label className="block mb-1 text-sm text-muted">Blink cycles</label>
               <input className="input" type="number" min={1} max={40} value={cycles} onChange={(e)=>setCycles(Number(e.target.value))}/>
             </div>
           </div>
-          <label className="block mb-1 text-sm opacity-80">FastAPI base</label>
-          <input className="input" value={piBase} onChange={(e)=>setPiBase(e.target.value)} placeholder="http://raspberrypi.local:8000"/>
-        </motion.div>
+          <label className="block mb-1 text-sm text-muted">Device endpoint</label>
+          <input className="input" value={piBase} onChange={(e)=>setPiBase(e.target.value)} placeholder="http://device.local:8000"/>
+        </div>
 
-        <motion.div id="events" initial={{opacity:0, y:10}} whileInView={{opacity:1, y:0}} viewport={{once:true}} transition={{duration:.5, delay:.1}} className="card shine">
+        <div id="events" className="card shine">
           <h3 className="text-lg font-semibold mb-3 flex items-center gap-2"><Radio className="w-5 h-5"/> Stream & Logs</h3>
           <div ref={logRef} className="scrollbox">
-            {!log.length && <div className="opacity-70 text-sm">No events yet. Call a tool or use LED controls.</div>}
+            {!log.length && <div className="text-muted-foreground text-sm">No events yet. Call a tool or use device controls.</div>}
             <ul className="space-y-2">
               {log.map(row => (
                 <li key={row.id} className="text-sm">
                   <div className="flex items-center justify-between">
-                    <span className="font-mono text-xs opacity-70">{row.t}</span>
-                    <span className={`badge ${row.level==='ok'?'border-emerald-700 bg-emerald-600/30': row.level==='err'?'border-rose-700 bg-rose-600/30':''}`}>{row.level}</span>
+                    <span className="font-mono text-xs text-muted-foreground">{row.t}</span>
+                    <span className={`badge ${
+                      row.level==='ok'
+                        ?'border-status-success/30 bg-status-success/10 text-status-success'
+                        : row.level==='err'
+                        ?'border-status-error/30 bg-status-error/10 text-status-error'
+                        :'border-status-info/30 bg-status-info/10 text-status-info'
+                    }`}>{row.level}</span>
                   </div>
                   <div className="font-mono mt-1">{row.text}</div>
-                  {row.meta && <div className="text-xs opacity-80 break-all">{JSON.stringify(row.meta)}</div>}
+                  {row.meta && <div className="text-xs text-muted break-all">{JSON.stringify(row.meta)}</div>}
                 </li>
               ))}
             </ul>
           </div>
-        </motion.div>
+        </div>
       </section>
     </div>
   );

@@ -3,7 +3,9 @@
   "version": "0.1.0",
   "private": true,
   "scripts": {
-    "dev": "next dev --turbopack",
+    "clear-mappings": "node clear-mappings.js",
+    "dev": "npm run clear-mappings && next dev --turbopack",
+    "dev:no-clear": "next dev --turbopack",
     "build": "next build --turbopack",
     "start": "next start",
     "lint": "eslint"
